@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Walmart → SHV Logistics Load Builder</title>
+<style>
+  :root{
+    --bg:#0d1117;
+    --card:#12181f;
+    --card-2:#161d26;
+    --line:#232b36;
+    --ink:#dbe2ea;
+    --ink-dim:#8b96a5;
+    --blue:#4f9dff;
+    --blue-dark:#3d84e0;
+    --green:#33c9a8;
+    --green-dark:#28ab8e;
+    --green-bg:rgba(51,201,168,.12);
+    --red:#ef6a6a;
+    --red-bg:rgba(239,106,106,.12);
+    --amber:#e8b94a;
+    --amber-bg:rgba(232,185,74,.14);
+    --mono:'SF Mono', 'JetBrains Mono', Consolas, monospace;
+    --sans:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    padding:28px 32px 64px;
+  }
+  .wrap{max-width:1100px;margin:0 auto;}
+
+  h1{font-size:22px;font-weight:700;margin:0 0 8px;letter-spacing:-.01em;}
+  .sub{font-size:13.5px;color:var(--ink-dim);margin:0 0 22px;line-height:1.6;max-width:640px;}
+
+  .actions{display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;}
+  button.act{
+    font-family:var(--sans);font-weight:600;font-size:14px;color:#04101f;
+    padding:11px 20px;border-radius:8px;border:none;cursor:pointer;
+    display:flex;align-items:center;gap:8px;transition:filter .12s ease, transform .08s ease;
+  }
+  button.act:active{transform:scale(.98);}
+  button.act:disabled{opacity:.45;cursor:not-allowed;}
+  #fetchBtn{background:var(--blue);}
+  #fetchBtn:hover:not(:disabled){background:var(--blue-dark);}
+  #pushBtn{background:var(--green);color:#03211b;}
+  #pushBtn:hover:not(:disabled){background:var(--green-dark);}
+  .spinner{
+    width:12px;height:12px;border-radius:50%;
+    border:2px solid rgba(0,0,0,.3);border-top-color:rgba(0,0,0,.7);
+    animation:spin .7s linear infinite;display:none;
+  }
+  .spinner.on{display:inline-block;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .hint{font-size:13px;color:var(--ink-dim);margin:0 0 22px;}
+  .error-banner{
+    display:none;background:var(--red-bg);border:1px solid rgba(239,106,106,.35);color:var(--red);
+    padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:18px;
+  }
+  .error-banner.show{display:block;}
+
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:20px 22px;margin-bottom:24px;
+  }
+  .card h2{
+    font-size:12.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    margin:0 0 14px;color:var(--ink);font-family:var(--mono);
+  }
+  .card h2 .count{color:var(--ink-dim);font-weight:600;}
+  .card h2.accepted{color:var(--green);}
+  .card h2.accepted .count{color:var(--green);}
+
+  .table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;}
+  table{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap;}
+  th{
+    text-align:left;font-size:11px;font-weight:700;color:var(--ink-dim);
+    text-transform:lowercase;padding:9px 14px;background:var(--card-2);
+    border-bottom:1px solid var(--line);font-family:var(--mono);
+  }
+  td{padding:9px 14px;border-bottom:1px solid var(--line);color:var(--ink);}
+  tr:last-child td{border-bottom:none;}
+  tr.flag-row{background:var(--amber-bg);}
+
+  .empty{
+    color:var(--ink-dim);font-size:13.5px;padding:24px;text-align:center;
+    border:1px dashed var(--line);border-radius:12px;margin-bottom:24px;
+  }
+
+  /* push result cards */
+  .result-grid{display:flex;flex-direction:column;gap:14px;}
+  .result-card{border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .result-head{
+    display:flex;align-items:center;gap:10px;padding:11px 16px;
+    background:var(--card-2);border-bottom:1px solid var(--line);
+  }
+  .badge{font-size:11px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:5px;}
+  .badge.pushed{background:var(--green-bg);color:var(--green);}
+  .badge.rejected{background:var(--red-bg);color:var(--red);}
+  .badge.review{background:var(--amber-bg);color:var(--amber);}
+  .result-load-no{font-family:var(--mono);font-weight:700;font-size:13.5px;}
+  .result-body{padding:14px 16px;}
+  .result-label{font-size:11.5px;color:var(--ink-dim);margin-bottom:6px;}
+  pre.json{
+    margin:0;background:var(--bg);border:1px solid var(--line);border-radius:7px;
+    padding:12px 14px;font-family:var(--mono);font-size:12.5px;line-height:1.6;
+    overflow-x:auto;color:var(--ink);
+  }
+  .k{color:#79b8ff;} .s{color:#9ecbff;} .n{color:#f0b46e;} .b{color:#ef6a6a;} .nul{color:var(--ink-dim);}
+  .err-list{margin:0;padding-left:18px;color:var(--red);font-size:12.5px;line-height:1.7;}
+  .review-reasons{margin:0;padding-left:18px;color:var(--amber);font-size:12.5px;line-height:1.7;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Walmart → SHV Logistics Load Builder</h1>
+  <p class="sub">Fetch raw Walmart freight tenders, sanitize them per the SHV rules, and push them into the TMS. Authentication is handled server-side via the backend's <code>API_TOKEN</code> — nothing to enter here.</p>
+
+  <div class="actions">
+    <button class="act" id="fetchBtn" onclick="fetchLoads()">
+      <span class="spinner" id="fetchSpin"></span>
+      1 · Fetch loads
+    </button>
+    <button class="act" id="pushBtn" onclick="pushLoads()" disabled>
+      <span class="spinner" id="pushSpin"></span>
+      2 · Sanitize &amp; push
+    </button>
+  </div>
+  <p class="hint">Fetch first to see the raw tenders, then sanitize &amp; push them to the TMS.</p>
+
+  <div class="error-banner" id="errorBanner"></div>
+
+  <div class="empty" id="emptyState">No tenders fetched yet. Click <strong>1 · Fetch loads</strong> to pull open tenders from Walmart.</div>
+
+  <!-- raw tenders table -->
+  <div class="card" id="rawCard" style="display:none;">
+    <h2>Raw tenders from Walmart portal (<span id="rawCount">0</span>)</h2>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>load_no</th><th>frt_ord_no</th><th>shipper_nm</th><th>orig_city</th><th>orig_st</th>
+            <th>dest_city</th><th>dest_st</th><th>shp_dt</th><th>del_dt</th><th>wgt</th><th>mode</th>
+          </tr>
+        </thead>
+        <tbody id="rawBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- push results -->
+  <div class="card" id="resultsCard" style="display:none;">
+    <h2 id="resultsTitle" class="accepted">Push results</h2>
+    <div class="result-grid" id="resultsGrid"></div>
+  </div>
+
+</div>
+
+<script>
+// Served by the same Flask app that holds API_TOKEN server-side — same
+// origin, so plain relative paths work both locally and once deployed.
+const API_BASE = '';
+
+let currentPreview = []; // last /api/fetch or /api/push "loads" array
+
+function showError(msg){
+  const b = document.getElementById('errorBanner');
+  b.textContent = msg;
+  b.classList.add('show');
+}
+function clearError(){
+  document.getElementById('errorBanner').classList.remove('show');
+}
+function toggleSpinner(id, on){ document.getElementById(id).classList.toggle('on', on); }
+
+function jsonBlock(obj){ return JSON.stringify(obj, null, 2); }
+
+function renderRawTable(preview){
+  const body = document.getElementById('rawBody');
+  body.innerHTML = '';
+  preview.forEach(p => {
+    const tr = document.createElement('tr');
+    if(p.flagged) tr.className = 'flag-row';
+    const l = p.source;
+    tr.innerHTML = `
+      <td>${l.load_no}</td><td>${l.frt_ord_no}</td><td>${l.shipper_nm}</td>
+      <td>${l.orig_city}</td><td>${l.orig_st}</td><td>${l.dest_city}</td><td>${l.dest_st}</td>
+      <td>${l.shp_dt}</td><td>${l.del_dt}</td><td>${l.wgt}</td><td>${l.mode}</td>
+    `;
+    body.appendChild(tr);
+  });
+  document.getElementById('rawCount').textContent = preview.length;
+  document.getElementById('rawCard').style.display = 'block';
+}
+
+async function fetchLoads(){
+  clearError();
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('resultsCard').style.display = 'none';
+
+  const btn = document.getElementById('fetchBtn');
+  btn.disabled = true;
+  toggleSpinner('fetchSpin', true);
+
+  let status = 0, body = null;
+  try{
+    const res = await fetch(`${API_BASE}/api/fetch`);
+    status = res.status;
+    body = await res.json().catch(() => null);
+  }catch(err){
+    body = { error: String(err) };
+  }
+
+  if(status === 200 && body && Array.isArray(body.loads)){
+    currentPreview = body.loads;
+    renderRawTable(currentPreview);
+    document.getElementById('pushBtn').disabled = currentPreview.filter(p => !p.flagged).length === 0;
+  } else if(status === 500){
+    showError(body?.error || 'Backend error — check the Flask server logs.');
+  } else {
+    showError(`Fetch failed (status ${status}). ${body ? JSON.stringify(body) : ''}`);
+  }
+
+  btn.disabled = false;
+  toggleSpinner('fetchSpin', false);
+}
+
+async function pushLoads(){
+  clearError();
+  const btn = document.getElementById('pushBtn');
+  btn.disabled = true;
+  toggleSpinner('pushSpin', true);
+
+  let status = 0, body = null;
+  try{
+    const res = await fetch(`${API_BASE}/api/push`, { method: 'POST' });
+    status = res.status;
+    body = await res.json().catch(() => null);
+  }catch(err){
+    body = { error: String(err) };
+  }
+
+  if(status === 200 && body){
+    currentPreview = body.loads;
+    renderRawTable(currentPreview);
+    renderResults(body);
+  } else if(status === 500){
+    showError(body?.error || 'Backend error — check the Flask server logs.');
+  } else {
+    showError(`Push failed (status ${status}). ${body ? JSON.stringify(body) : ''}`);
+  }
+
+  btn.disabled = false;
+  toggleSpinner('pushSpin', false);
+}
+
+function renderResults(body){
+  const grid = document.getElementById('resultsGrid');
+  grid.innerHTML = '';
+
+  const accepted = new Set(body.accepted || []);
+  const rejectedMap = {};
+  (body.rejected || []).forEach(r => { rejectedMap[r.load_number] = r.errors; });
+
+  const clean = body.loads.filter(p => !p.flagged);
+  const flagged = body.loads.filter(p => p.flagged);
+
+  let acceptedCount = 0;
+
+  clean.forEach(p => {
+    const loadNo = p.payload.load_number;
+    const wasRejected = !!rejectedMap[loadNo];
+    if(!wasRejected) acceptedCount++;
+
+    const card = document.createElement('div');
+    card.className = 'result-card';
+
+    if(wasRejected){
+      card.innerHTML = `
+        <div class="result-head">
+          <span class="badge rejected">REJECTED</span>
+          <span class="result-load-no">${loadNo}</span>
+        </div>
+        <div class="result-body">
+          <div class="result-label">Errors:</div>
+          <ul class="err-list">${rejectedMap[loadNo].map(e => `<li>${e}</li>`).join('')}</ul>
+        </div>`;
+    } else {
+      card.innerHTML = `
+        <div class="result-head">
+          <span class="badge pushed">PUSHED</span>
+          <span class="result-load-no">${loadNo}</span>
+        </div>
+        <div class="result-body">
+          <div class="result-label">Sent to TMS:</div>
+          <pre class="json">${jsonBlock(p.payload)}</pre>
+        </div>`;
+    }
+    grid.appendChild(card);
+  });
+
+  flagged.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.innerHTML = `
+      <div class="result-head">
+        <span class="badge review">NEEDS REVIEW</span>
+        <span class="result-load-no">${p.source.load_no}</span>
+      </div>
+      <div class="result-body">
+        <div class="result-label">Held back from push — not sent:</div>
+        <ul class="review-reasons">${p.issues.map(e => `<li>${e}</li>`).join('')}</ul>
+      </div>`;
+    grid.appendChild(card);
+  });
+
+  const total = clean.length + flagged.length;
+  const title = document.getElementById('resultsTitle');
+  title.innerHTML = `Push results (<span class="count">${acceptedCount}/${total} accepted</span>)`;
+  document.getElementById('resultsCard').style.display = 'block';
+}
+</script>
+</body>
+</html>
